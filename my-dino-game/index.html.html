@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dino-Crisis: Survival Log</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cousine&family=Spectral:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Cousine', monospace;
+            background-color: #0f172a; /* Tailwind slate-900 */
+        }
+        #game-container {
+            font-family: 'Spectral', serif;
+            background-color: #1e293b; /* slate-800 */
+            border: 1px solid #334155; /* slate-700 */
+            box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5);
+        }
+        .status-bar-fill {
+            transition: width 0.5s ease-in-out;
+        }
+        #game-output {
+            font-family: 'Cousine', monospace;
+        }
+        #game-output::-webkit-scrollbar {
+            width: 8px;
+        }
+        #game-output::-webkit-scrollbar-track {
+            background: #1e293b; /* slate-800 */
+        }
+        #game-output::-webkit-scrollbar-thumb {
+            background-color: #475569; /* slate-600 */
+            border-radius: 4px;
+        }
+        .command-input::placeholder {
+            color: #64748b; /* slate-500 */
+        }
+        .command-input:focus {
+            outline: none;
+            border-color: #94a3b8; /* slate-400 */
+        }
+        .keyword {
+            font-weight: bold;
+            color: #d1d5db; /* gray-300 */
+        }
+        .fire-text {
+            color: #f59e0b; /* amber-500 */
+            text-shadow: 0 0 5px #f59e0b;
+        }
+        .combat-text-player { color: #22c55e; /* green-500 */ }
+        .combat-text-enemy { color: #ef4444; /* red-500 */ }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-300 flex items-center justify-center min-h-screen p-4">
+
+    <div id="game-container" class="w-full max-w-4xl mx-auto bg-slate-800 rounded-lg shadow-2xl p-6 border border-slate-700">
+        <header class="text-center pb-4 border-b border-slate-700">
+            <h1 class="text-4xl font-bold text-slate-200 tracking-wider">SURVIVAL LOG</h1>
+            <p class="text-slate-400 text-lg">Temporal Anomaly: KT-BOUNDARY</p>
+        </header>
+
+        <!-- Stats Display -->
+        <div id="stats" class="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-4 my-6 text-sm tracking-wider">
+            <!-- Health -->
+            <div>
+                <span class="font-bold text-red-400/80">VITALITY</span>
+                <div class="bg-slate-700 rounded-full h-2 mt-1 overflow-hidden border border-slate-600">
+                    <div id="health-bar" class="status-bar-fill bg-red-600 h-full rounded-full"></div>
+                </div>
+            </div>
+            <!-- Hunger -->
+            <div>
+                <span class="font-bold text-amber-400/80">SUSTENANCE</span>
+                <div class="bg-slate-700 rounded-full h-2 mt-1 overflow-hidden border border-slate-600">
+                    <div id="hunger-bar" class="status-bar-fill bg-amber-600 h-full rounded-full"></div>
+                </div>
+            </div>
+            <!-- Thirst -->
+            <div>
+                <span class="font-bold text-sky-400/80">HYDRATION</span>
+                <div class="bg-slate-700 rounded-full h-2 mt-1 overflow-hidden border border-slate-600">
+                    <div id="thirst-bar" class="status-bar-fill bg-sky-600 h-full rounded-full"></div>
+                </div>
+            </div>
+            <!-- Energy -->
+            <div>
+                <span class="font-bold text-green-400/80">STAMINA</span>
+                <div class="bg-slate-700 rounded-full h-2 mt-1 overflow-hidden border border-slate-600">
+                    <div id="energy-bar" class="status-bar-fill bg-green-600 h-full rounded-full"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Game Output -->
+        <div id="game-output" class="bg-slate-900/70 border border-slate-700 rounded-md p-4 h-96 overflow-y-auto mb-4 text-base leading-relaxed">
+            <!-- Game text will be dynamically inserted here -->
+        </div>
+
+        <!-- User Input -->
+        <div class="flex items-center">
+            <span class="text-slate-400 text-xl mr-2 font-bold">&gt;</span>
+            <input type="text" id="command-input" class="command-input bg-transparent border-b-2 border-slate-600 w-full text-slate-200 text-lg p-2 focus:outline-none transition-all duration-300" placeholder="Enter command...">
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const output = document.getElementById('game-output');
+        const input = document.getElementById('command-input');
+        const healthBar = document.getElementById('health-bar');
+        const hungerBar = document.getElementById('hunger-bar');
+        const thirstBar = document.getElementById('thirst-bar');
+        const energyBar = document.getElementById('energy-bar');
+
+        // Player State
+        const player = {
+            health: 100,
+            hunger: 100,
+            thirst: 100,
+            energy: 100,
+            inventory: [],
+            currentLocation: 'crashSite',
+            isResting: false,
+        };
+        
+        // Game World
+        const world = {
+            crashSite: {
+                name: "The Wreckage",
+                description: "An oppressive silence hangs in the humid air, broken only by the hiss of the smoldering temporal pod. Twisted metal groans. Towering, alien-looking ferns press in from all sides, their fronds dripping with moisture.",
+                exits: { north: 'deepJungle', west: 'clearing', east: 'stream' },
+                items: [
+                    { id: 'vine', name: 'tough vine', useInfo: 'Useful for crafting or binding things together.', description: 'A long, fibrous vine, surprisingly strong.' },
+                    { id: 'water_leaf', name: 'rain-filled leaf', useInfo: 'A temporary source of clean water.', description: 'A broad leaf cupping a small amount of rainwater.'}
+                ],
+                dino: null,
+                isFireLit: false,
+            },
+            deepJungle: {
+                name: "Deep Jungle",
+                description: "The canopy above is a dense, suffocating blanket, plunging the jungle floor into twilight. The air is thick with the cloying scent of decay and damp earth. Unseen things skitter in the undergrowth just beyond your sight.",
+                exits: { south: 'crashSite' },
+                items: [
+                    { id: 'berries', name: 'dark berries', useInfo: 'A potential food source, but could be risky.', description: 'A cluster of dark, purple berries.' },
+                    { id: 'root', name: 'fibrous root', useInfo: 'A tough but edible food source.', description: 'A dirty, fibrous root pulled from the ground.'}
+                ],
+                dino: { name: 'Compsognathus pack', health: 20, damage: 5, chance: 0.3, loot: null },
+                isFireLit: false,
+            },
+            clearing: {
+                name: "Bone Clearing",
+                description: "You discover a clearing dominated by the colossal, fossilized skeleton of some impossible creature. A herd of large, horned beasts grazes peacefully nearby, their powerful forms moving with a surprising grace.",
+                exits: { east: 'crashSite', north: 'cave' },
+                items: [{ id: 'rock', name: 'flint shard', useInfo: 'The edge is sharp enough for cutting or fighting. Can be struck to create sparks.', description: 'A piece of flint with a razor-sharp edge.' }],
+                dino: { name: 'Triceratops herd', health: 100, damage: 15, chance: 0.1, loot: { id: 'raw_meat', name: 'raw meat', useInfo: 'Should be cooked before eating.', description: 'A fresh slab of raw meat.' }},
+                isFireLit: false,
+            },
+            stream: {
+                name: "Shallow Stream",
+                description: "A stream of unnervingly clear water flows over dark, smooth stones. It seems safe, a rare comfort in this hostile world.",
+                exits: { west: 'crashSite' },
+                items: [],
+                dino: null,
+                isFireLit: false,
+            },
+            cave: {
+                name: "Cave Entrance",
+                description: "A dark, damp fissure in the rock. A cold, foul-smelling draft emanates from the darkness within, carrying with it a low, guttural sound. It might offer shelter, but you are not alone.",
+                exits: { south: 'clearing' },
+                items: [{ id: 'wood', name: 'dry wood', useInfo: 'Excellent tinder for a fire.', description: 'A pile of brittle, dry wood.' }],
+                dino: { name: 'Resting Utahraptor', health: 80, damage: 30, chance: 0.2, loot: null },
+                isFireLit: false,
+            }
+        };
+
+        // --- GAME LOGIC ---
+
+        function parseCommand(command) {
+            const parts = command.toLowerCase().trim().split(' ');
+            const action = parts[0];
+            const target = parts.slice(1).join(' ');
+            
+            if (player.health <= 0) return;
+
+            if (player.isResting && action !== 'stop') {
+                printToOutput("You are resting. Command 'stop resting' to continue.", "text-yellow-400/80");
+                return;
+            }
+
+            switch (action) {
+                case 'go': case 'move':
+                    movePlayer(target);
+                    break;
+                case 'look': case 'l': case 'examine':
+                    lookAround();
+                    break;
+                case 'take': case 'get':
+                    takeItem(target);
+                    break;
+                case 'drop':
+                    dropItem(target);
+                    break;
+                case 'inventory': case 'i':
+                    showInventory();
+                    break;
+                case 'use':
+                    useItem(target);
+                    break;
+                case 'uses':
+                    checkUses(target);
+                    break;
+                case 'drink':
+                    drinkWater();
+                    break;
+                case 'rest':
+                    rest();
+                    break;
+                case 'stop':
+                    if (target === 'resting') stopResting();
+                    else printToOutput("Stop what? If resting, command 'stop resting'.", "text-slate-500");
+                    break;
+                case 'attack':
+                    attackCreature(target);
+                    break;
+                case 'help':
+                    showHelp();
+                    break;
+                default:
+                    printToOutput("Unknown command. Use 'help' for options.", "text-slate-500");
+            }
+            
+            if(action && !['stop', 'help', 'inventory', 'look', 'l', 'uses'].includes(action)) {
+                 if (!player.isResting) {
+                    tick();
+                 }
+            }
+        }
+        
+        function movePlayer(direction) {
+            const location = world[player.currentLocation];
+            const newLocationId = location.exits[direction];
+
+            if (newLocationId) {
+                if (player.energy <= 0) {
+                    printToOutput("Stamina depleted. Unable to move.", "text-yellow-400/80");
+                    return;
+                }
+                player.currentLocation = newLocationId;
+                updateStats({ energy: -5 });
+                lookAround();
+                
+                const newLocation = world[player.currentLocation];
+                if (newLocation.dino && Math.random() < newLocation.dino.chance) {
+                     printToOutput(`A wild ${newLocation.dino.name} emerges from the gloom and attacks!`, "text-red-500 font-bold");
+                     updateStats({ health: -newLocation.dino.damage });
+                     printToOutput(`It deals ${newLocation.dino.damage} damage.`, "text-red-400");
+                }
+                
+            } else {
+                printToOutput("That path is impassable.", "text-slate-500");
+            }
+        }
+        
+        function lookAround() {
+            const location = world[player.currentLocation];
+            printToOutput(`\n<span class='text-xl text-slate-300 tracking-wider'>${location.name}</span>`);
+            printToOutput(location.description, "text-slate-400");
+
+            if (location.isFireLit) {
+                printToOutput("A small, crackling fire burns brightly here, casting dancing shadows.", "fire-text");
+            }
+            
+            if (location.dino) {
+                printToOutput(`A ${location.dino.name} is here.`, "text-yellow-400/80");
+            }
+
+            const exitKeys = Object.keys(location.exits);
+            if (exitKeys.length > 0) {
+                const formattedExits = exitKeys.map(dir => `<span class='keyword'>${dir}</span>`);
+                let exitsString;
+                if (exitKeys.length === 1) exitsString = `There is an obvious path to the ${formattedExits[0]}.`;
+                else {
+                    const lastExit = formattedExits.pop();
+                    exitsString = `Obvious paths are to the ${formattedExits.join(', ')} and ${lastExit}.`;
+                }
+                printToOutput(exitsString, "text-slate-300");
+            } else {
+                printToOutput("There are no obvious paths from here.", "text-slate-400");
+            }
+
+            if (location.items.length > 0) {
+                printToOutput("On the ground: " + location.items.map(item => `<span class='text-amber-300/80'>${item.name}</span>`).join(', ') + ".", "text-slate-400");
+            }
+        }
+        
+        function attackCreature(targetName) {
+            const location = world[player.currentLocation];
+            if (!location.dino) {
+                printToOutput("There is nothing here to attack.", "text-slate-500");
+                return;
+            }
+            if (!location.dino.name.toLowerCase().includes(targetName)) {
+                printToOutput(`You don't see a ${targetName} here.`, "text-slate-500");
+                return;
+            }
+
+            const playerHasWeapon = player.inventory.some(i => i.id === 'rock');
+            const playerDamage = playerHasWeapon ? 25 : 10;
+            
+            printToOutput(`You attack the ${location.dino.name} with your ${playerHasWeapon ? 'flint shard' : 'fists'}!`, "combat-text-player");
+            updateStats({ energy: -10 });
+            
+            location.dino.health -= playerDamage;
+            
+            if(location.dino.health <= 0) {
+                printToOutput(`You have defeated the ${location.dino.name}!`, "text-green-400 font-bold");
+                if (location.dino.loot) {
+                    location.items.push(location.dino.loot);
+                    printToOutput(`It dropped ${location.dino.loot.name}.`, "text-sky-300/80");
+                }
+                location.dino = null;
+            } else {
+                printToOutput(`The ${location.dino.name} retaliates!`, "combat-text-enemy");
+                updateStats({ health: -location.dino.damage });
+                printToOutput(`It deals ${location.dino.damage} damage to you.`, "combat-text-enemy");
+            }
+        }
+
+        function takeItem(itemName) {
+            const location = world[player.currentLocation];
+            const itemIndex = location.items.findIndex(item => item.name.includes(itemName));
+            
+            if (itemIndex !== -1) {
+                const [item] = location.items.splice(itemIndex, 1);
+                player.inventory.push(item);
+                printToOutput(`Acquired: ${item.name}.`, "text-sky-300/80");
+                updateStats({ energy: -2 });
+            } else {
+                printToOutput("Object not found.", "text-slate-500");
+            }
+        }
+        
+        function dropItem(itemName) {
+            const itemIndex = player.inventory.findIndex(item => item.name.includes(itemName));
+            if (itemIndex !== -1) {
+                const [item] = player.inventory.splice(itemIndex, 1);
+                world[player.currentLocation].items.push(item);
+                printToOutput(`You dropped the ${item.name}.`, "text-yellow-400/80");
+            } else {
+                printToOutput("Item not in inventory.", "text-slate-500");
+            }
+        }
+
+        function useItem(itemName) {
+            const itemIndex = player.inventory.findIndex(item => item.name.includes(itemName));
+            const location = world[player.currentLocation];
+
+            if (itemIndex === -1) {
+                printToOutput("Item not in inventory.", "text-slate-500");
+                return;
+            }
+            
+            const item = player.inventory[itemIndex];
+
+            switch(item.id) {
+                case 'berries':
+                    printToOutput("You consume the dark berries...", "text-yellow-300/80");
+                    if (Math.random() > 0.7) {
+                        printToOutput("A wave of nausea hits you. They're toxic.", "text-red-500");
+                        updateStats({ health: -20, hunger: 15 });
+                    } else {
+                        printToOutput("They are bitter, but stave off your hunger.", "text-green-400/80");
+                        updateStats({ hunger: 30 });
+                    }
+                    player.inventory.splice(itemIndex, 1);
+                    break;
+                case 'root':
+                    printToOutput("You chew on the tough, fibrous root.", "text-yellow-300/80");
+                    updateStats({ hunger: 15 });
+                    player.inventory.splice(itemIndex, 1);
+                    break;
+                case 'water_leaf':
+                    printToOutput("You drink the water from the leaf. It's refreshing.", "text-sky-300/80");
+                    updateStats({ thirst: 25 });
+                    player.inventory.splice(itemIndex, 1);
+                    break;
+                case 'wood':
+                    if (location.isFireLit) {
+                        printToOutput("You add the wood to the fire, making it burn brighter.", "fire-text");
+                        player.inventory.splice(itemIndex, 1);
+                    } else if (player.inventory.some(i => i.id === 'rock')) {
+                        printToOutput("You arrange the dry wood and strike the flint shard. Sparks fly, and a small flame catches. You've made a fire!", "fire-text");
+                        location.isFireLit = true;
+                        player.inventory.splice(itemIndex, 1);
+                    } else {
+                        printToOutput("You have the wood, but you need something to create a spark.", "text-slate-400");
+                    }
+                    break;
+                case 'raw_meat':
+                    if (location.isFireLit) {
+                        printToOutput("You cook the meat over the fire. The smell is incredible.", "text-amber-300");
+                        player.inventory.splice(itemIndex, 1); // Remove raw meat
+                        player.inventory.push({ id: 'cooked_meat', name: 'cooked meat', useInfo: 'A safe and highly nutritious food source.', description: 'A piece of perfectly cooked meat.'});
+                    } else {
+                         printToOutput("You probably shouldn't eat this raw. You need to cook it first.", "text-yellow-400/80");
+                    }
+                    break;
+                case 'cooked_meat':
+                    printToOutput("You eat the cooked meat. It's restorative and delicious.", "text-green-400");
+                    updateStats({ health: 15, hunger: 60, energy: 10 });
+                    player.inventory.splice(itemIndex, 1);
+                    break;
+                default:
+                    printToOutput(`No obvious use for the ${item.name} right now.`, "text-slate-500");
+            }
+        }
+
+        function checkUses(itemName) {
+            const item = player.inventory.find(item => item.name.includes(itemName));
+            if (item) {
+                printToOutput(`<span class='keyword'>${item.name}</span>: ${item.useInfo}`, "text-sky-300/80");
+            } else {
+                printToOutput("You don't have that item.", "text-slate-500");
+            }
+        }
+
+        function showInventory() {
+            if (player.inventory.length === 0) {
+                printToOutput("Inventory empty.", "text-slate-400");
+            } else {
+                const inventoryList = player.inventory.map(item => `<span class='text-amber-300/80'>${item.name}</span>: ${item.description}`).join('<br>');
+                printToOutput("<span class='text-slate-300'>Carrying:</span><br>" + inventoryList, "text-slate-400");
+            }
+        }
+
+        function drinkWater() {
+            if (player.currentLocation === 'stream') {
+                printToOutput("You drink from the stream. The water is cold and pure.", "text-sky-300/80");
+                updateStats({ thirst: 50, energy: 5 });
+            } else {
+                printToOutput("There is no water source here.", "text-slate-500");
+            }
+        }
+
+        function rest() {
+            if (player.energy >= 100) {
+                 printToOutput("You are not tired.", "text-yellow-400/80");
+                 return;
+            }
+            player.isResting = true;
+            if(world[player.currentLocation].isFireLit){
+                printToOutput("You rest by the warm fire. Command 'stop resting' to continue.", "text-green-300/80");
+            } else {
+                printToOutput("You find a relatively safe spot to rest. Command 'stop resting' to continue.", "text-green-300/80");
+            }
+        }
+        
+        function stopResting() {
+            player.isResting = false;
+            printToOutput("You get back on your feet, more alert now.", "text-green-400/80");
+        }
+
+        function showHelp() {
+            const commands = [
+                "<span class='keyword'>go [direction]</span>: Move location.",
+                "<span class='keyword'>look</span> or <span class='keyword'>l</span>: Examine surroundings.",
+                "<span class='keyword'>take [item]</span>: Pick up an item.",
+                "<span class='keyword'>drop [item]</span>: Drop an item from inventory.",
+                "<span class='keyword'>inventory</span> or <span class='keyword'>i</span>: Check carried items.",
+                "<span class='keyword'>use [item]</span>: Use an item.",
+                "<span class='keyword'>uses [item]</span>: Check the potential uses of an inventory item.",
+                "<span class='keyword'>attack [creature]</span>: Attack a creature in your location.",
+                "<span class='keyword'>drink</span>: Drink from a water source.",
+                "<span class='keyword'>rest</span>: Regain stamina.",
+                "<span class='keyword'>stop resting</span>: Cease resting.",
+            ];
+            printToOutput("<span class='text-slate-300'>Command List:</span><br>" + commands.join('<br>'), "text-slate-400");
+        }
+        
+        function tick() {
+            if (player.health <= 0) return;
+            
+            if (player.isResting) {
+                let energyGain = world[player.currentLocation].isFireLit ? 20 : 10;
+                updateStats({ energy: energyGain, hunger: -0.5, thirst: -1 });
+                if (player.energy >= 100) {
+                     stopResting();
+                }
+                return;
+            }
+
+            updateStats({ hunger: -2, thirst: -3 });
+
+            if (player.hunger <= 0) {
+                printToOutput("Sustenance critical. Vitality dropping.", "text-red-500 font-bold");
+                updateStats({ health: -5 });
+            }
+            if (player.thirst <= 0) {
+                printToOutput("Hydration critical. Vitality dropping.", "text-red-500 font-bold");
+                updateStats({ health: -5 });
+            }
+        }
+        
+        function updateStats(changes) {
+            if (changes.health) player.health += changes.health;
+            if (changes.hunger) player.hunger += changes.hunger;
+            if (changes.thirst) player.thirst += changes.thirst;
+            if (changes.energy) player.energy += changes.energy;
+
+            player.health = Math.max(0, Math.min(100, player.health));
+            player.hunger = Math.max(0, Math.min(100, player.hunger));
+            player.thirst = Math.max(0, Math.min(100, player.thirst));
+            player.energy = Math.max(0, Math.min(100, player.energy));
+
+            healthBar.style.width = player.health + '%';
+            hungerBar.style.width = player.hunger + '%';
+            thirstBar.style.width = player.thirst + '%';
+            energyBar.style.width = player.energy + '%';
+            
+            if (player.health <= 0) {
+                gameOver();
+            }
+        }
+        
+        function gameOver() {
+            printToOutput("\nBIO-SIGNALS FAILED...", "text-red-500 text-xl font-bold tracking-widest");
+            printToOutput("SUBJECT DECEASED.", "text-red-500 text-xl font-bold tracking-widest");
+            printToOutput("LOG TERMINATED. Refresh page to re-initialize.", "text-yellow-400/80");
+            input.disabled = true;
+        }
+
+        // --- UTILITY FUNCTIONS ---
+
+        function printToOutput(text, className = 'text-slate-300') {
+            const p = document.createElement('p');
+            p.innerHTML = text;
+            p.className = `${className} mb-1`;
+            output.appendChild(p);
+            output.scrollTop = output.scrollHeight;
+        }
+
+        // --- INITIALIZATION ---
+        
+        function init() {
+            printToOutput("System reboot... partial success. Chronometer failure. Environmental sensors active. You are... somewhere else. Your mission protocols have been wiped. New directive: Survive.", "text-slate-500 italic");
+            lookAround();
+            updateStats({});
+            
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    const command = input.value;
+                    if (command) {
+                        printToOutput(`<span class="text-slate-500">&gt; ${command}</span>`);
+                        parseCommand(command);
+                        input.value = '';
+                    }
+                }
+            });
+            
+            setInterval(tick, 20000); 
+        }
+
+        init();
+    </script>
+</body>
+</html>
+
